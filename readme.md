@@ -92,3 +92,6 @@ sh runners/parameter.sh
 
 2. Q. Liu and J. Paparrizos, “The elephant in the room: Towards a reliable time-series anomaly detection benchmark,” in The 38th Conference on Neural Information Processing Systems Datasets and Benchmarks Track, 2024
 
+## Acknowledgement ##
+We appreciate [ Prof. Eamonn Keogh](https://www.cs.ucr.edu/~eamonn/) and [Qinghua Liu](https://github.com/TheDatumOrg/TSB-AD) for providing the high-quality datasets and the evaluation protocols.
+
