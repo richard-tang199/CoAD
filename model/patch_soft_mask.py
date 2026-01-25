@@ -250,34 +250,66 @@ class DetectionNetTimeFreqV2(nn.Module):
         if fusion_type =='gate':
             self.fusion_net = GatedMultimodalLayer(2 * self.hidden_size, 2 * self.hidden_size, 2 * self.hidden_size)
 
-
-        self.classifier_time = nn.Linear(self.hidden_size * 2, 1)
-        self.classifier_freq = nn.Linear(self.hidden_size * 2, 1)
+        self.classifier_time = nn.Sequential(
+            nn.Linear(self.hidden_size * 2, self.hidden_size),
+            nn.SELU(),
+            nn.Linear(self.hidden_size, 1, bias=False),
+        )
+        self.classifier_freq = nn.Sequential(
+            nn.Linear(self.hidden_size * 2, self.hidden_size),
+            nn.SELU(),
+            nn.Linear(self.hidden_size, 1, bias=False),
+        )
+        self.classifier_residual = nn.Sequential(
+            nn.Linear(self.hidden_size * 2, self.hidden_size),
+            nn.SELU(),
+            nn.Linear(self.hidden_size, 1, bias=False),
+        )
 
         nn.init.xavier_uniform_(self.proj_freq.weight)
         nn.init.zeros_(self.proj_freq.bias)
         nn.init.xavier_uniform_(self.proj_time.weight)
         nn.init.zeros_(self.proj_time.bias)
-        nn.init.xavier_uniform_(self.classifier_time.weight)
-        nn.init.zeros_(self.classifier_time.bias)
-        nn.init.xavier_uniform_(self.classifier_freq.weight)
-        nn.init.zeros_(self.classifier_freq.bias)
+
+        # 初始化 classifier_time
+        for layer in self.classifier_time:
+            if isinstance(layer, nn.Linear):
+                nn.init.xavier_uniform_(layer.weight)
+                if layer.bias is not None:
+                    nn.init.zeros_(layer.bias)
+
+        # 初始化 classifier_freq
+        for layer in self.classifier_freq:
+            if isinstance(layer, nn.Linear):
+                nn.init.xavier_uniform_(layer.weight)
+                if layer.bias is not None:
+                    nn.init.zeros_(layer.bias)
+
+        # 初始化 classifier_residual
+        for layer in self.classifier_residual:
+            if isinstance(layer, nn.Linear):
+                nn.init.xavier_uniform_(layer.weight)
+                if layer.bias is not None:
+                    nn.init.zeros_(layer.bias)
 
     def forward(self,
-                x: torch.Tensor):
+                x: torch.Tensor,
+                x_refer: torch.Tensor =  None):
         """
         :param x: batch_size, seq_length
+        :param x_refer: batch_size, seq_length
         :return:
         """
-        # (batch_size * num_channels, seq_len, 2 * (self.n_fft // 2 + 1))
+        if x_refer is not None:
+            x = torch.cat((x, x_refer), dim=0) # batch_size * 2, seq_length
+
         batch_size, seq_length = x.shape
-        x_freq = time_to_timefreq(x, n_fft=self.n_fft, C=1)
+        x_freq = time_to_timefreq(x, n_fft=self.n_fft, C=1) # (batch_size * num_channels, seq_len, 2 * (self.n_fft // 2 + 1))
         x_freq = x_freq[:, :seq_length, :]
         x_time = x.unfold(dimension=-1, size=self.patch_size, step=self.patch_size)
 
-        # batch_size * num_channels, patch_num, patch_length * fft_length
-        patch_freq = x_freq.view(batch_size, seq_length // self.patch_size, -1)
-        patch_time = x_time.view(batch_size, seq_length // self.patch_size, -1)
+        patch_freq = x_freq.view(batch_size, seq_length // self.patch_size, -1)  # batch_size * num_channels, patch_num, patch_length * fft_length
+        patch_time = x_time.view(batch_size, seq_length // self.patch_size, -1)  # batch_size * num_channels, patch_num, patch_length
 
         # batch_size * num_channels, patch_num, hidden_size
         freq_proj = self.proj_freq(patch_freq)
@@ -286,13 +318,20 @@ class DetectionNetTimeFreqV2(nn.Module):
         time_proj = self.proj_time(patch_time)
         time_proj = self.act(time_proj)
 
-        patch_output_freq, patch_hidden_freq = self.encoder_freq(freq_proj)
-        patch_output_time, patch_hidden_time = self.encoder_time(time_proj)
+        patch_output_freq, _ = self.encoder_freq(freq_proj)
+        patch_output_time, _ = self.encoder_time(time_proj)
 
-        # patch_output_freq = patch_output_freq.reshape(batch_size * (seq_length // self.patch_size), -1)
-        # patch_output_time = patch_output_time.reshape(batch_size * (seq_length // self.patch_size), -1)
-        #
-        # patch_output = self.fusion_net(patch_output_freq, patch_output_time)
+        classify_residual_result: torch.Tensor = None
+        patch_residual_freq: torch.Tensor = None
+        patch_residual_time: torch.Tensor = None
+        if x_refer is not None:
+            patch_output_freq, patch_ref_freq = torch.split(patch_output_freq, batch_size // 2, dim=0)
+            patch_output_time, patch_ref_time = torch.split(patch_output_time, batch_size // 2, dim=0)
+            patch_residual_freq = patch_output_freq - patch_ref_freq
+            patch_residual_time = patch_output_time - patch_ref_time
+            classify_result_residual_freq = self.classifier_residual(patch_residual_freq)
+            classify_result_residual_time = self.classifier_residual(patch_residual_time)
+            classify_residual_result = torch.cat((classify_result_residual_freq, classify_result_residual_time), dim=-1)
 
         # batch_size * num_channels, patch_num, 1
         classify_result_freq = self.classifier_freq(patch_output_freq)
@@ -301,18 +340,31 @@ class DetectionNetTimeFreqV2(nn.Module):
 
         if self.fusion_type =='max':
             classify_result = torch.max(classify_result, dim=-1, keepdim=True).values
+            if x_refer is not None:
+                classify_residual_result = torch.max(classify_residual_result, dim=-1, keepdim=True).values
         elif self.fusion_type =='mean':
             classify_result = torch.mean(classify_result, dim=-1, keepdim=True)
+            if x_refer is not None:
+                classify_residual_result = torch.mean(classify_residual_result, dim=-1, keepdim=True)
         elif self.fusion_type == 'gate':
             patch_output_fusion = self.fusion_net(patch_output_freq, patch_output_time)
             classify_result = self.classifier_freq(patch_output_fusion)
+            if x_refer is not None:
+                patch_residual_fusion = self.fusion_net(patch_residual_freq, patch_residual_time)
+                classify_residual_result = self.classifier_residual(patch_residual_fusion)
         elif self.fusion_type == 'add':
             patch_output_fusion = patch_output_freq + patch_output_time
             classify_result = self.classifier_freq(patch_output_fusion)
+            if x_refer is not None:
+                patch_residual_fusion = patch_residual_freq + patch_residual_time
+                classify_residual_result = self.classifier_residual(patch_residual_fusion)
         else:
             raise ValueError('fusion_type must be max, mean, gate or add')
 
         patch_anomaly_score = torch.nn.Sigmoid()(classify_result)
+        if classify_residual_result is not None:
+            patch_residual_anomaly_score = torch.nn.Sigmoid()(classify_residual_result)
+            return classify_result, patch_anomaly_score, classify_residual_result, patch_residual_anomaly_score
 
         return classify_result, patch_anomaly_score
 
@@ -759,8 +811,6 @@ class ReconstructionNet(nn.Module):
             un_anomaly_loss = loss * (1 - patch_labels)
             un_anomaly_loss = torch.sum(un_anomaly_loss) / (torch.sum(1 - patch_labels) * self.patch_size + 1e-7)
             loss = 0.5 * anomaly_loss + 0.5 * un_anomaly_loss
-            # loss = anomaly_loss
-            # loss = torch.mean(loss)
         # batch_size, seq_length
         recon_values = recon_values.reshape(batch_size, -1)
         return recon_values, loss
@@ -1022,7 +1072,7 @@ class GatingReconstructionNet(nn.Module):
 
 class PatchFrequencyMask(nn.Module):
     def __init__(self, patch_size, expansion_ratio, num_layers,
-                 n_fft=4, patch_num=None, detect_mode="conv", recon_mode="hard", omega=10):
+                 n_fft=4, patch_num=None, detect_mode="freq_time_v2", recon_mode="soft", omega=10):
         super().__init__()
 
         self.patch_size = patch_size
@@ -1146,8 +1196,7 @@ class PatchFrequencyMask(nn.Module):
 
     def forward(self,
                 x,
-                subsequence_length=None
-                ):
+                subsequence_length=None):
         """
         Parameters
         ----------
@@ -1185,12 +1234,16 @@ class PatchFrequencyMask(nn.Module):
             classify_result = classify_result.squeeze(-1)
             classify_loss = self.classify_loss(input=classify_result,
                                                target=window_labels)
+        elif self.detect_mode == "freq_time_v2":
+            patch_labels = patch_labels.reshape(batch_size * patch_num, -1)
+            _, _, classify_residual_result, _ = self.detection_net(x=x_distorted, x_refer=recon_result)
+            classify_loss = self.classify_loss(input=classify_result, target=patch_labels)
+            classify_residual_loss = self.classify_loss(input=classify_residual_result, target=patch_labels)
+            classify_loss = (classify_loss + classify_residual_loss) / 2
         else:
             classify_result = classify_result.reshape(batch_size * patch_num, -1)
             patch_labels = patch_labels.reshape(batch_size * patch_num, -1)
-            classify_loss = self.classify_loss(input=classify_result,
-                                               target=patch_labels)
-
+            classify_loss = self.classify_loss(input=classify_result, target=patch_labels)
 
         loss = classify_loss + self.omega * recon_loss
         return loss, classify_loss, recon_loss
@@ -1201,6 +1254,9 @@ class PatchFrequencyMask(nn.Module):
         x = x.reshape(batch_size * num_channels, seq_length)
         _, classify_anomaly_score = self.detection_net(x)
         recon_values, _ = self.reconstruction_net(x = x, patch_anomaly_score = classify_anomaly_score, is_training=False)
+        if self.detect_mode == "freq_time_v2":
+            _, _, _, classify_anomaly_score = self.detection_net(x=x, x_refer=recon_values)
+            recon_values, _ = self.reconstruction_net(x = x, patch_anomaly_score = classify_anomaly_score, is_training=False)
         if self.recon_mode == "guide_hard":
             recon_values, _ = self.reconstruction_net(x = x, patch_anomaly_score = classify_anomaly_score, is_training=False, threshold=threshold)
         recon_values = recon_values.unsqueeze(-1)
