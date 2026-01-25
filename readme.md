@@ -72,7 +72,9 @@ sh runners/run_all_CoAD.sh
 <h2 id="reproduce-the-baseline-results">🔁 Reproduce the baseline results </h2>
 
 ```shell
+# reproduce the deep learning based methods
 sh runners/run_deep_baseline.sh
+# reproduce the data mining based methods
 sh runners/run_dm_baseline.sh
 ```
 
