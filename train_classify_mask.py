@@ -20,7 +20,7 @@ from datetime import datetime
 torch.backends.cudnn.benchmark=True
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_name', type=str, default='guide_hard', help='Name of the model')
+parser.add_argument('--model_name', type=str, default='freq_tf_v2', help='Name of the model')
 parser.add_argument('--dataset_name', type=str, default="UCR", help='Name of the dataset')
 parser.add_argument("--group_name", type=str, default="004", help="group in the dataset")
 parser.add_argument("--batch_size", type=int, default=64, help="batch size for training")
