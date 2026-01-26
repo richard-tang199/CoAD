@@ -16,6 +16,15 @@ torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
+__all__ = ['find_period',
+           'find_length_rank',
+           'load_dataset',
+           "SequenceWindowConversion",
+           "get_dataloader",
+           "anomaly_score_func",
+           "Multiple_dataset",
+           "get_multiple_dataloader"]
+
 def find_period(data: np.array):
     if len(data.shape) > 1:
         return 0
@@ -292,7 +301,7 @@ def get_dataloader(data: np.ndarray, batch_size: int, window_length: int, train_
         batch_size=batch_size,
         shuffle=if_shuffle,
         drop_last=False,
-        num_workers=4,
+        num_workers=0,
         pin_memory=True
     )
 

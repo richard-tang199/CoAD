@@ -178,8 +178,6 @@ def recon_plot(save_path: str,
     # plot test anomaly score
     if test_anomaly_score is None and recon_test_data is not None:
         test_anomaly_score = np.array(diff_test).mean(0)
-        # test_anomaly_score = (test_anomaly_score - test_anomaly_score.min()) / (
-        #         test_anomaly_score.max() - test_anomaly_score.min())
 
     if test_anomaly_score is not None:
         axs[-1][1].plot(test_anomaly_score)

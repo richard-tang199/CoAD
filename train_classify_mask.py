@@ -4,7 +4,6 @@ import os
 import numpy as np
 import torch
 import time
-
 from evaluation.evaluator import evaluate
 from toolkit.result_plot import recon_plot, get_segments
 from model.patch_soft_mask import PatchFrequencyMask
@@ -15,16 +14,14 @@ from toolkit.get_anomaly_score import AnomalyScoreCalculator
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
-
-
 torch.backends.cudnn.benchmark=True
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_name', type=str, default='freq_tf_v2', help='Name of the model')
 parser.add_argument('--dataset_name', type=str, default="UCR", help='Name of the dataset')
-parser.add_argument("--group_name", type=str, default="004", help="group in the dataset")
+parser.add_argument("--group_name", type=str, default="002", help="group in the dataset")
 parser.add_argument("--batch_size", type=int, default=64, help="batch size for training")
-parser.add_argument("--num_epochs", type=int, default=300, help="number of epochs for training")
+parser.add_argument("--num_epochs", type=int, default=30, help="number of epochs for training")
 parser.add_argument("--lr", type=float, default=2e-3, help="learning rate for training")
 parser.add_argument("--eval_gap", type=int, default=20, help="training epochs between evaluations")
 parser.add_argument("--use_default_config", action='store_true', help="use default configuration for training")
@@ -490,8 +487,8 @@ if __name__ == '__main__':
         val_recon_anomaly_score = (val_recon_anomaly_score - np.min(val_recon_anomaly_score)) / (
                 np.max(val_recon_anomaly_score) - np.min(val_recon_anomaly_score))
 
-    test_anomaly_score = test_classify_anomaly_score + test_recon_anomaly_score
-    val_anomaly_score = val_classify_anomaly_score + val_recon_anomaly_score
+    test_anomaly_score = (test_classify_anomaly_score + test_recon_anomaly_score) / 2
+    val_anomaly_score = (val_classify_anomaly_score + val_recon_anomaly_score) / 2
 
     np.save(os.path.join(anomaly_score_path,
                          f"group_{args.group_name}_test_anomaly_score.npy"), test_anomaly_score)

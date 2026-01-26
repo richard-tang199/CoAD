@@ -1,5 +1,67 @@
 import torch
 import torch.nn as nn
+# from flash_attn.modules.mha import MHA
+
+class LearnablePositionalEncoding(nn.Module):
+    def __init__(self, max_len, d_model):
+        super().__init__()
+        self.pos_embedding = nn.Parameter(torch.randn(1, max_len, d_model))
+
+    def forward(self, x):
+        """
+        x: Tensor of shape (batch_size, seq_len, d_model)
+        """
+        seq_len = x.size(1)
+        return x + self.pos_embedding[:, :seq_len, :]
+
+# class FlashTransformerEncoderLayer(nn.Module):
+#     def __init__(self, d_model, nhead, dropout=0.1, dim_feedforward=2048):
+#         super().__init__()
+#         self.self_attn = MHA(embed_dim=d_model, num_heads=nhead, dropout=dropout)
+#
+#         self.linear1 = nn.Linear(d_model, dim_feedforward)
+#         self.dropout = nn.Dropout(dropout)
+#         self.linear2 = nn.Linear(dim_feedforward, d_model)
+#
+#         self.norm1 = nn.LayerNorm(d_model)
+#         self.norm2 = nn.LayerNorm(d_model)
+#         self.dropout1 = nn.Dropout(dropout)
+#         self.dropout2 = nn.Dropout(dropout)
+#         self.activation = nn.ReLU()
+#
+#     def forward(self, x, key_padding_mask=None):
+#         x_res = x
+#         x = self.self_attn(x, key_padding_mask=key_padding_mask)
+#         x = self.dropout1(x)
+#         x = self.norm1(x + x_res)
+#
+#         x_res = x
+#         x = self.linear2(self.dropout(self.activation(self.linear1(x))))
+#         x = self.dropout2(x)
+#         x = self.norm2(x + x_res)
+#
+#         return x
+
+class TransformerEncoder(nn.Module):
+    def __init__(self, d_model, num_layers):
+        super().__init__()
+        self.pos_encoder = LearnablePositionalEncoding(max_len=5000, d_model=d_model)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=4,
+            dim_feedforward=d_model,
+            dropout=0.1,
+            batch_first=True
+        )
+        self.transformer_encoder = (
+            nn.TransformerEncoder(encoder_layer, num_layers=num_layers))
+
+    def forward(self, src):
+        src = self.pos_encoder(src)
+        output = self.transformer_encoder(src, src_key_padding_mask=None)
+        return output
+
+
 
 
 class Patchify(nn.Module):
@@ -110,6 +172,44 @@ class VectorQuantizer(nn.Module):
 
         return loss, z_q, perplexity, min_encoding_indices.view(z.shape[:-1])
 
+# class TransformerFlashEncoder(nn.Module):
+#     def __init__(self, d_model, num_layers=6):
+#         super().__init__()
+#         self.pos_encoder = LearnablePositionalEncoding(max_len=5000, d_model=d_model)
+#
+#         self.layers = nn.ModuleList([
+#             FlashTransformerEncoderLayer(
+#                 d_model=d_model,
+#                 nhead=4,
+#                 dropout=0.1,
+#                 dim_feedforward=d_model
+#             )
+#             for _ in range(num_layers)
+#         ])
+#
+#     def forward(self, x, key_padding_mask=None):
+#         x = self.pos_encoder(x)
+#         for layer in self.layers:
+#             x = layer(x, key_padding_mask=key_padding_mask)
+#         return x
+
+class TransformerEncoder(nn.Module):
+    def __init__(self, d_model, num_layers=4):
+        super().__init__()
+        self.pos_encoder = LearnablePositionalEncoding(max_len=5000, d_model=d_model)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=3,
+            dim_feedforward=d_model,
+            dropout=0.1,
+            batch_first=True
+        )
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+    def forward(self, src):
+        src = self.pos_encoder(src)
+        output = self.transformer_encoder(src, src_key_padding_mask=None)
+        return output
 
 if __name__ == '__main__':
     patchify = Patchify(sequence_length=128, patch_length=8, patch_stride=8)

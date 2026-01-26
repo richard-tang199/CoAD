@@ -5,8 +5,7 @@ from toolkit.distort import *
 import random
 from model.frequency import time_to_timefreq, time_to_timefreq_v2
 from model.PatchTSMixerLayer import PatchMixerEncoder
-from model.RWKV import RWKV_TimeMix, RWKVConfig
-from model.tcn import TCN
+from model.layers import TransformerEncoder
 
 seed = 42
 device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
@@ -217,7 +216,6 @@ class DetectionNetTime(nn.Module):
         patch_anomaly_score = torch.nn.Sigmoid()(classify_result)
 
         return classify_result, patch_anomaly_score
-
 
 class DetectionNetTimeFreqV2(nn.Module):
     def __init__(self, patch_size, expansion_ratio, num_layers, n_fft=4, fusion_type='max'):
@@ -728,6 +726,70 @@ class DetectionNetConv(nn.Module):
 
         return classify_result, patch_anomaly_score
 
+class TransformerReconstructionNet(nn.Module):
+    def __init__(self, patch_size, expansion_ratio, num_layers, patch_num=None):
+        super().__init__()
+        self.patch_size = patch_size
+        self.hidden_size = expansion_ratio * patch_size
+        self.proj = nn.Linear(patch_size, self.hidden_size)
+        self.act = nn.SELU()
+        self.encoder = TransformerEncoder(d_model=self.hidden_size, num_layers=num_layers)
+        self.head = nn.Linear(self.hidden_size, patch_size)
+
+        self.mask_embedding = nn.Parameter(torch.randn(self.hidden_size), requires_grad=True)
+        self.loss_fn = nn.MSELoss(reduction='none')
+        nn.init.xavier_uniform_(self.proj.weight)
+        nn.init.zeros_(self.proj.bias)
+        nn.init.xavier_uniform_(self.head.weight)
+        nn.init.zeros_(self.head.bias)
+
+    def forward(self,
+                x: torch.Tensor,
+                patch_anomaly_score: torch.Tensor = None,
+                raw_x: torch.Tensor = None,
+                patch_labels: torch.Tensor = None,
+                is_training=True):
+        """
+                :param raw_x:
+                :param x: batch_size * num_channels, seq_length
+                :param patch_anomaly_score: batch_size * num_channels, patch_num, 1
+                :param patch_labels: batch_size * num_channels, patch_num, 1
+                :return:
+                """
+        # x: batch_size * num_channels, num_patches, patch_size
+        x_patch = x.unfold(dimension=-1, size=self.patch_size, step=self.patch_size)
+
+        batch_size, num_patches, _ = x_patch.shape
+
+        # x_proj: batch_size * num_channels, num_patches, hidden_size
+        patch_proj = self.proj(x_patch)
+        patch_proj = self.act(patch_proj)
+
+        # mask_embedding: batch_size * num_channels, num_patches, hidden_size
+        mask_embedding = self.mask_embedding.unsqueeze(0).unsqueeze(0)
+        mask_embedding = mask_embedding.repeat(batch_size, num_patches, 1)
+
+        # weighted_sum embedding
+        # mask_embedding: batch_size * num_channels, num_patches, hidden_size
+        patch_anomaly_score = patch_anomaly_score
+        soft_mask_patches = mask_embedding * patch_anomaly_score + (1 - patch_anomaly_score) * patch_proj
+        patch_out = self.encoder(soft_mask_patches)
+        recon_values = self.head(patch_out)
+
+        loss = None
+        if is_training:
+            raw_x = raw_x.squeeze(-1)
+            raw_x_patch = raw_x.unfold(dimension=-1, size=self.patch_size, step=self.patch_size)
+            loss = self.loss_fn(recon_values, raw_x_patch)
+            patch_labels = patch_labels.unsqueeze(-1)
+            anomaly_loss = loss * patch_labels
+            anomaly_loss = torch.sum(anomaly_loss) / (torch.sum(patch_labels) * self.patch_size + 1e-7)
+            un_anomaly_loss = loss * (1 - patch_labels)
+            un_anomaly_loss = torch.sum(un_anomaly_loss) / (torch.sum(1 - patch_labels) * self.patch_size + 1e-7)
+            loss = 0.5 * anomaly_loss + 0.5 * un_anomaly_loss
+        # batch_size, seq_length
+        recon_values = recon_values.reshape(batch_size, -1)
+        return recon_values, loss
 
 class ReconstructionNet(nn.Module):
     def __init__(self, patch_size, expansion_ratio, num_layers, patch_num=None):
@@ -1176,6 +1238,13 @@ class PatchFrequencyMask(nn.Module):
                 num_layers=num_layers,
                 patch_num=patch_num
             )
+        elif recon_mode == "transformer":
+            self.reconstruction_net = TransformerReconstructionNet(
+                patch_size=self.patch_size,
+                expansion_ratio=expansion_ratio,
+                num_layers=num_layers,
+                patch_num=patch_num
+            )
         elif recon_mode == "gating":
             self.reconstruction_net = GatingReconstructionNet(
                 patch_size=self.patch_size,
@@ -1237,6 +1306,8 @@ class PatchFrequencyMask(nn.Module):
         elif self.detect_mode == "freq_time_v2":
             patch_labels = patch_labels.reshape(batch_size * patch_num, -1)
             _, _, classify_residual_result, _ = self.detection_net(x=x_distorted, x_refer=recon_result)
+            classify_result = classify_result.reshape(batch_size * patch_num, -1)
+            classify_residual_result = classify_residual_result.reshape(batch_size * patch_num, -1)
             classify_loss = self.classify_loss(input=classify_result, target=patch_labels)
             classify_residual_loss = self.classify_loss(input=classify_residual_result, target=patch_labels)
             classify_loss = (classify_loss + classify_residual_loss) / 2
@@ -1255,7 +1326,8 @@ class PatchFrequencyMask(nn.Module):
         _, classify_anomaly_score = self.detection_net(x)
         recon_values, _ = self.reconstruction_net(x = x, patch_anomaly_score = classify_anomaly_score, is_training=False)
         if self.detect_mode == "freq_time_v2":
-            _, _, _, classify_anomaly_score = self.detection_net(x=x, x_refer=recon_values)
+            _, _, _, classify_residual_score = self.detection_net(x=x, x_refer=recon_values)
+            classify_anomaly_score = (classify_anomaly_score + classify_residual_score) / 2
             recon_values, _ = self.reconstruction_net(x = x, patch_anomaly_score = classify_anomaly_score, is_training=False)
         if self.recon_mode == "guide_hard":
             recon_values, _ = self.reconstruction_net(x = x, patch_anomaly_score = classify_anomaly_score, is_training=False, threshold=threshold)
@@ -1278,7 +1350,7 @@ if __name__ == '__main__':
         expansion_ratio=2,
         num_layers=2,
         n_fft=4,
-        recon_mode="guide_hard",
+        recon_mode="soft",
         detect_mode="freq_time_v2"
     )
     output = model(sample)

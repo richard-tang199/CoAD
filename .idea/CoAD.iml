@@ -3,6 +3,7 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/dataset" />
+      <excludeFolder url="file://$MODULE_DIR$/mask_results" />
     </content>
     <orderEntry type="jdk" jdkName="moment" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
