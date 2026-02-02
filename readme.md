@@ -46,7 +46,7 @@ pip install -r requirements.txt
 
 - A visual illustration of the flaws present in the datasets (SMD, PSM, SWaT, SMAP, MSL, and NAB) can be found at the following link: [flawed datasets](https://github.com/richard-tang199/BRC/blob/new/A_visual%20illustration_of_the%20dataset_%20flaws..pdf). The PDF is sourced from a presentation given by Professor Eamonn Keogh at ITISE 2023.
 
-- Download the dataset from the anonymous link [dataset](https://d.kuku.lu/pfj2vscrj) and extract it to the `dataset` folder.
+- Download the dataset from the anonymous link [dataset](https://d.kuku.lu/fszdkgjcx) and extract it to the `dataset` folder.
 
 ```
 ├─dataset
@@ -97,6 +97,4 @@ sh runners/parameter.sh
 
 2. Q. Liu and J. Paparrizos, “The elephant in the room: Towards a reliable time-series anomaly detection benchmark,” in The 38th Conference on Neural Information Processing Systems Datasets and Benchmarks Track, 2024
 
-## Acknowledgement ##
-We appreciate [ Prof. Eamonn Keogh](https://www.cs.ucr.edu/~eamonn/) and [Qinghua Liu](https://github.com/TheDatumOrg/TSB-AD) for providing the high-quality datasets and the evaluation protocols.
 

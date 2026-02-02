@@ -19,10 +19,10 @@ torch.backends.cudnn.benchmark=True
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_name', type=str, default='freq_tf_v2', help='Name of the model')
-parser.add_argument('--dataset_name', type=str, default="UCR", help='Name of the dataset')
-parser.add_argument("--group_name", type=str, default="045", help="group in the dataset")
+parser.add_argument('--dataset_name', type=str, default="TSB-AD", help='Name of the dataset')
+parser.add_argument("--group_name", type=str, default="225", help="group in the dataset")
 parser.add_argument("--batch_size", type=int, default=64, help="batch size for training")
-parser.add_argument("--num_epochs", type=int, default=300, help="number of epochs for training")
+parser.add_argument("--num_epochs", type=int, default=20, help="number of epochs for training")
 parser.add_argument("--lr", type=float, default=2e-3, help="learning rate for training")
 parser.add_argument("--eval_gap", type=int, default=20, help="training epochs between evaluations")
 parser.add_argument("--use_default_config", action='store_true', help="use default configuration for training")
@@ -424,18 +424,20 @@ if __name__ == '__main__':
     save_path = os.path.join(save_dir, f"figure/group_{args.group_name}.png")
     # test_anomaly_score = np.squeeze(test_anomaly_score, axis=-1)
 
-    if args.dataset_name == "TSB-AD-U" or args.dataset_name == "ASD":
-        subsequence_length = None
+    if args.dataset_name == "TSB-AD" or args.dataset_name == "ASD":
+        average_window = None
+    else:
+        average_window = subsequence_length
 
     anomaly_score_cal_classify = AnomalyScoreCalculator(
         mode="error",
-        average_window=subsequence_length,
+        average_window=average_window,
         add_average=False
     )
 
     anomaly_score_cal_recon = AnomalyScoreCalculator(
         mode="error",
-        average_window=subsequence_length,
+        average_window=average_window,
         add_average=False
     )
 
