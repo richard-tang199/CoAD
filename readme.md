@@ -44,7 +44,7 @@ pip install -r requirements.txt
 ```
 <h2 id="prepare-datasets">🗄️ Prepare datasets </h2>
 
-- A visual illustration of the flaws present in the datasets (SMD, PSM, SWaT, SMAP, MSL, and NAB) can be found at the following link: [flawed datasets](https://github.com/richard-tang199/BRC/blob/new/A_visual%20illustration_of_the%20dataset_%20flaws..pdf). The PDF is sourced from a presentation given by Professor Eamonn Keogh at ITISE 2023.
+- A visual illustration of the flaws present in the datasets (SMD, PSM, SWaT, SMAP, MSL, and NAB) can be found at the following anonymous link: [flawed datasets](https://d.kuku.lu/mb753fdrp). The PDF is sourced from a presentation given at ITISE 2023.
 
 - Download the dataset from the anonymous link [dataset](https://d.kuku.lu/fszdkgjcx) and extract it to the `dataset` folder.
 
@@ -93,8 +93,8 @@ sh runners/parameter.sh
 
 <h2 id="references">📚 References </h2>
 
-1. E. Keogh, “Multidataset time series anomaly detection competition,” 2021, https://compete.hexagon-ml.com/practice/competition/39/.
+1. “Multidataset time series anomaly detection competition,” 2021, https://compete.hexagon-ml.com/practice/competition/39/.
 
-2. Q. Liu and J. Paparrizos, “The elephant in the room: Towards a reliable time-series anomaly detection benchmark,” in The 38th Conference on Neural Information Processing Systems Datasets and Benchmarks Track, 2024
+2. “The elephant in the room: Towards a reliable time-series anomaly detection benchmark,” in The 38th Conference on Neural Information Processing Systems Datasets and Benchmarks Track, 2024
 
 
