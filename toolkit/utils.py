@@ -121,7 +121,7 @@ def load_dataset(data_name: str, group_name: str = "1"):
         train_data = [np.load(os.path.join(data_path, "train", file)) for file in train_data_list]
         test_data = [np.load(os.path.join(data_path, "test", file)) for file in test_data_list]
         test_label = [np.load(os.path.join(data_path, "label", file)) for file in test_label_list]
-        subsequence_list = pd.read_csv("dataset/UCR/all_period.csv")
+        subsequence_list = pd.read_csv("dataset/UCR/all_length.csv")
         subsequence_list.sort_values(by="file_name", inplace=True)
         subsequence_list = subsequence_list['period'].tolist()
         subsequence_list = [subsequence_list[i] for i in group_name]
@@ -302,7 +302,8 @@ def get_dataloader(data: np.ndarray, batch_size: int, window_length: int, train_
         shuffle=if_shuffle,
         drop_last=False,
         num_workers=0,
-        pin_memory=True
+        pin_memory=True,
+        # prefetch_factor=4
     )
 
     return data_loader, window_converter

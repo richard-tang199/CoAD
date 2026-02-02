@@ -46,7 +46,7 @@ def evaluate(ground_truth: np.ndarray, anomaly_scores: np.ndarray, subsequence: 
     all_results = EvaluationResult()
 
     # point-wise evaluation
-    precision, recall, threshold = metrics.precision_recall_curve(y_true=ground_truth, probas_pred=anomaly_scores)
+    precision, recall, threshold = metrics.precision_recall_curve(y_true=ground_truth, y_score=anomaly_scores)
     threshold = threshold.astype(np.float64)
     f1_score = 2 * precision * recall / (precision + recall + 1e-12)
     auc_prc = metrics.auc(recall, precision)

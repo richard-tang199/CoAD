@@ -14,6 +14,15 @@ torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 random.seed(seed)
 
+torch.backends.cudnn.benchmark=True
+
+class Permute(nn.Module):
+    def __init__(self, *dims):
+        super().__init__()
+        self.dims = dims
+
+    def forward(self, x):
+        return x.permute(self.dims)
 
 class GatedMultimodalLayer(nn.Module):
     def __init__(self, size_in1, size_in2, size_out=16):
@@ -225,19 +234,34 @@ class DetectionNetTimeFreqV2(nn.Module):
         self.proj_size_freq = patch_size * 2 * (self.n_fft // 2 + 1)
         self.proj_size_time = patch_size
         self.hidden_size = expansion_ratio * self.proj_size_freq
-        self.proj_freq = nn.Linear(self.proj_size_freq, self.hidden_size)
-        self.proj_time = nn.Linear(self.proj_size_time, self.hidden_size)
-        self.fusion_type = fusion_type
-        self.act = nn.SELU()
-        self.encoder_time = nn.GRU(
-            input_size=self.hidden_size,
-            hidden_size=self.hidden_size,
-            num_layers=num_layers,
-            batch_first=True,
-            bidirectional=True,
-            dropout=0.1
+        self.proj_freq = nn.Sequential(
+            nn.Linear(self.proj_size_freq, self.hidden_size),
+            # nn.LayerNorm(self.hidden_size),
+            nn.SELU()
         )
-        self.encoder_freq = nn.GRU(
+        self.proj_time = nn.Sequential(
+            nn.Linear(self.proj_size_time, self.hidden_size),
+            # nn.LayerNorm(self.hidden_size),
+            nn.SELU()
+        )
+        self.fusion_type = fusion_type
+        # self.encoder_time = nn.GRU(
+        #     input_size=self.hidden_size,
+        #     hidden_size=self.hidden_size,
+        #     num_layers=num_layers,
+        #     batch_first=True,
+        #     bidirectional=True,
+        #     dropout=0.1
+        # )
+        # self.encoder_freq = nn.GRU(
+        #     input_size=self.hidden_size,
+        #     hidden_size=self.hidden_size,
+        #     num_layers=num_layers,
+        #     batch_first=True,
+        #     bidirectional=True,
+        #     dropout=0.1
+        # )
+        self.encoder = nn.GRU(
             input_size=self.hidden_size,
             hidden_size=self.hidden_size,
             num_layers=num_layers,
@@ -250,24 +274,27 @@ class DetectionNetTimeFreqV2(nn.Module):
 
         self.classifier_time = nn.Sequential(
             nn.Linear(self.hidden_size * 2, self.hidden_size),
+            # nn.LayerNorm(self.hidden_size),
             nn.SELU(),
             nn.Linear(self.hidden_size, 1, bias=False),
         )
         self.classifier_freq = nn.Sequential(
             nn.Linear(self.hidden_size * 2, self.hidden_size),
+            # nn.LayerNorm(self.hidden_size),
             nn.SELU(),
             nn.Linear(self.hidden_size, 1, bias=False),
         )
         self.classifier_residual = nn.Sequential(
             nn.Linear(self.hidden_size * 2, self.hidden_size),
+            # nn.LayerNorm(self.hidden_size),
             nn.SELU(),
             nn.Linear(self.hidden_size, 1, bias=False),
         )
 
-        nn.init.xavier_uniform_(self.proj_freq.weight)
-        nn.init.zeros_(self.proj_freq.bias)
-        nn.init.xavier_uniform_(self.proj_time.weight)
-        nn.init.zeros_(self.proj_time.bias)
+        nn.init.xavier_uniform_(self.proj_freq[0].weight)
+        nn.init.zeros_(self.proj_freq[0].bias)
+        nn.init.xavier_uniform_(self.proj_time[0].weight)
+        nn.init.zeros_(self.proj_time[0].bias)
 
         # 初始化 classifier_time
         for layer in self.classifier_time:
@@ -302,7 +329,7 @@ class DetectionNetTimeFreqV2(nn.Module):
             x = torch.cat((x, x_refer), dim=0) # batch_size * 2, seq_length
 
         batch_size, seq_length = x.shape
-        x_freq = time_to_timefreq(x, n_fft=self.n_fft, C=1) # (batch_size * num_channels, seq_len, 2 * (self.n_fft // 2 + 1))
+        x_freq = time_to_timefreq(x.clone(), n_fft=self.n_fft, C=1) # (batch_size * num_channels, seq_len, 2 * (self.n_fft // 2 + 1))
         x_freq = x_freq[:, :seq_length, :]
         x_time = x.unfold(dimension=-1, size=self.patch_size, step=self.patch_size)
 
@@ -311,13 +338,13 @@ class DetectionNetTimeFreqV2(nn.Module):
 
         # batch_size * num_channels, patch_num, hidden_size
         freq_proj = self.proj_freq(patch_freq)
-        freq_proj = self.act(freq_proj)
-
         time_proj = self.proj_time(patch_time)
-        time_proj = self.act(time_proj)
 
-        patch_output_freq, _ = self.encoder_freq(freq_proj)
-        patch_output_time, _ = self.encoder_time(time_proj)
+        all_proj = torch.cat((freq_proj, time_proj), dim=0) # batch_size * 2, patch_num, hidden_size
+        patch_output_all, _ = self.encoder(all_proj) # batch_size * 2, patch_num, hidden_size
+        patch_output_freq, patch_output_time = torch.split(patch_output_all, batch_size, dim=0) # batch_size, patch_num, hidden_size
+        # patch_output_freq, patch_hidden_freq = self.encoder_freq(freq_proj)
+        # patch_output_time, patch_hidden_time = self.encoder_time(time_proj)
 
         classify_residual_result: torch.Tensor = None
         patch_residual_freq: torch.Tensor = None
@@ -818,7 +845,7 @@ class ReconstructionNet(nn.Module):
             )
             self.head = nn.Linear(self.hidden_size, patch_size)
 
-        self.mask_embedding = nn.Parameter(torch.randn(self.hidden_size), requires_grad=False)
+        self.mask_embedding = nn.Parameter(torch.randn(self.hidden_size), requires_grad=True)
         self.loss_fn = nn.MSELoss(reduction='none')
         nn.init.xavier_uniform_(self.proj.weight)
         nn.init.zeros_(self.proj.bias)
@@ -1138,7 +1165,7 @@ class PatchFrequencyMask(nn.Module):
         super().__init__()
 
         self.patch_size = patch_size
-        self.classify_loss = nn.BCEWithLogitsLoss()
+        self.classify_loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([2.0]))
         self.recon_loss = nn.MSELoss()
         self.omega = omega
         self.detect_mode = detect_mode
@@ -1277,9 +1304,14 @@ class PatchFrequencyMask(nn.Module):
         """
         batch_size, seq_length, num_channels = x.shape
         patch_num = seq_length // self.patch_size
-        distorted_functions = [uniform_distort, scale_distort, jitering_distort, original, mirror_flip]
+        distorted_functions = [uniform_distort, scale_distort, jitering_distort, mirror_flip]
         # labels (batch_size, length)
         x_distorted, labels = random.choice(distorted_functions)(x, subsequence_length)
+        x_distorted = torch.cat([x, x_distorted], dim=0)
+        labels = torch.cat([torch.zeros_like(labels), labels], dim=0)
+        raw_x = torch.cat([x, x], dim=0)
+        # raw_x = x
+        batch_size, _, _ = raw_x.shape
         labels = labels.to(x.device)
         x_distorted = x_distorted.permute(0, 2, 1)  # (batch_size, num_channels, seq_len)
         # (batch_size * num_channels, seq_len)
@@ -1289,7 +1321,7 @@ class PatchFrequencyMask(nn.Module):
         # (batch_size, patch_num, 1)
         patch_labels = (labels_distorted > 0).float()
         classify_result, patch_anomaly_score = self.detection_net(x_distorted)
-        recon_result, recon_loss = self.reconstruction_net(x=x_distorted, raw_x=x,
+        recon_result, recon_loss = self.reconstruction_net(x=x_distorted, raw_x=raw_x,
                                                            patch_anomaly_score=patch_anomaly_score,
                                                            patch_labels=patch_labels)
         if self.detect_mode == "freq_time_point":
@@ -1331,8 +1363,8 @@ class PatchFrequencyMask(nn.Module):
             recon_values, _ = self.reconstruction_net(x = x, patch_anomaly_score = classify_anomaly_score, is_training=False)
         if self.recon_mode == "guide_hard":
             recon_values, _ = self.reconstruction_net(x = x, patch_anomaly_score = classify_anomaly_score, is_training=False, threshold=threshold)
-        recon_values = recon_values.unsqueeze(-1)
 
+        recon_values = recon_values.unsqueeze(-1)
         # (batch_size * num_channels, patch_num, patch_size)
         classify_anomaly_score = classify_anomaly_score.repeat(1, 1, self.patch_size)
         # (batch_size, num_channels, seq_length)
@@ -1344,7 +1376,7 @@ class PatchFrequencyMask(nn.Module):
 
 
 if __name__ == '__main__':
-    sample = torch.rand(64, 1024, 1)
+    sample = torch.rand(64, 1024, 1).to("cuda")
     model = PatchFrequencyMask(
         patch_size=16,
         expansion_ratio=2,
@@ -1353,6 +1385,7 @@ if __name__ == '__main__':
         recon_mode="soft",
         detect_mode="freq_time_v2"
     )
+    model = model.to("cuda")
     output = model(sample)
     predict = model.predict(sample, 0.1)
     print(predict[0].shape, predict[1].shape)

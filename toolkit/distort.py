@@ -11,6 +11,16 @@ torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
 
+__all__ = ['uniform_distort',
+           'scale_distort',
+           'jitering_distort',
+           'sudden_add_drop',
+           'frequency_distort',
+           'point_distort',
+           "original",
+           "soft_raplacement",
+           "mirror_flip"]
+
 def uniform_distort(time_series, subsequence_length=None, inject_rate=None):
     """
     @param time_series: (batch_size, length, 1)

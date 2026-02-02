@@ -13,15 +13,16 @@ from dataclasses import dataclass, asdict
 from toolkit.get_anomaly_score import AnomalyScoreCalculator
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
+import random
 
 torch.backends.cudnn.benchmark=True
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_name', type=str, default='freq_tf_v2', help='Name of the model')
 parser.add_argument('--dataset_name', type=str, default="UCR", help='Name of the dataset')
-parser.add_argument("--group_name", type=str, default="002", help="group in the dataset")
+parser.add_argument("--group_name", type=str, default="045", help="group in the dataset")
 parser.add_argument("--batch_size", type=int, default=64, help="batch size for training")
-parser.add_argument("--num_epochs", type=int, default=30, help="number of epochs for training")
+parser.add_argument("--num_epochs", type=int, default=300, help="number of epochs for training")
 parser.add_argument("--lr", type=float, default=2e-3, help="learning rate for training")
 parser.add_argument("--eval_gap", type=int, default=20, help="training epochs between evaluations")
 parser.add_argument("--use_default_config", action='store_true', help="use default configuration for training")
@@ -32,12 +33,14 @@ parser.add_argument("--plot", type=str, default="True", help="whether to plot th
 parser.add_argument("--omega", type=float, default=10, help="omega for loss function")
 parser.add_argument("--window_multiple", type=int, default=4, help="window multiple for training")
 parser.add_argument('--random_seed', type=int, default=46, help='random seed for reproducibility')
+parser.add_argument("--timestamp", type=str, default="", help="timestamp for saving the results")
 
 if __name__ == '__main__':
     args = parser.parse_args()
     args.group_name = [args.group_name]
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
 
+    random.seed(args.random_seed)
     torch.manual_seed(args.random_seed)
     torch.cuda.manual_seed(args.random_seed)
     torch.cuda.manual_seed_all(args.random_seed)
@@ -54,7 +57,7 @@ if __name__ == '__main__':
     else:
         raise ValueError("Invalid value for plot")
 
-    save_dir = f"mask_results/{args.dataset_name}/{args.model_name}_random_seed_{args.random_seed}"
+    save_dir = f"mask_results/{args.dataset_name}/{args.model_name}_{args.timestamp}"
     os.makedirs(save_dir, exist_ok=True)
     os.makedirs(f"{save_dir}/figure", exist_ok=True)
     os.makedirs(f"{save_dir}/config", exist_ok=True)
@@ -83,11 +86,6 @@ if __name__ == '__main__':
         else:
             multiple = len(train_data) // subsequence_length
 
-        # if subsequence_length // args.patch_size > 32:
-        #     patch_size = subsequence_length // 32
-        #
-        # if patch_size > args.patch_size:
-        #     args.patch_size = int(patch_size)
 
         window_length = subsequence_length * multiple
         window_length = (window_length // args.patch_size) * args.patch_size
@@ -176,7 +174,7 @@ if __name__ == '__main__':
             model = PatchFrequencyMask(
                 patch_size=args.patch_size,
                 expansion_ratio=3,
-                num_layers=3,
+                num_layers=2,
                 n_fft=4,
                 patch_num=None,
                 recon_mode="soft",
@@ -280,6 +278,7 @@ if __name__ == '__main__':
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.99)
 
         epoch_time_list = []
+        scaler = torch.cuda.amp.GradScaler()
         for epoch in range(args.num_epochs):
             start_time = time.time()
             model.train()
@@ -289,25 +288,30 @@ if __name__ == '__main__':
 
             for batch_idx, (data,) in enumerate(train_loader):
                 data = data.to(device)
-                data = data.permute(0, 2, 1)
+                data = data.permute(0, 2, 1).contiguous()
                 batch_size, num_channels, seq_len = data.shape
                 data = data.reshape(data.shape[0] * data.shape[1], data.shape[2], 1)
-                loss, classify_loss, reconstruction_loss = model(data, subsequence_length=subsequence_length)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                epoch_loss += loss.item()
-                epoch_classify_loss += classify_loss.item()
-                epoch_reconstruction_loss += reconstruction_loss.item()
 
+                optimizer.zero_grad(set_to_none=True)
+                with torch.amp.autocast(device_type='cuda', enabled=True, dtype=torch.float16):
+                    loss, classify_loss, reconstruction_loss = model(data, subsequence_length=subsequence_length)
+
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+
+                epoch_loss += loss.detach()
+                epoch_classify_loss += classify_loss.detach()
+                epoch_reconstruction_loss += reconstruction_loss.detach()
+
+            mean_loss = epoch_loss.item() / len(train_loader)
+            mean_classify_loss = epoch_classify_loss.item() / len(train_loader)
+            mean_reconstruction_loss = epoch_reconstruction_loss.item() / len(train_loader)
 
             epoch_duration = time.time() - start_time
             epoch_time_list.append(epoch_duration)
             scheduler.step()
-            print(f"Epoch {epoch}: Loss {epoch_loss / len(train_loader)}")
-            mean_loss = epoch_loss / len(train_loader)
-            mean_classify_loss = epoch_classify_loss / len(train_loader)
-            mean_reconstruction_loss = epoch_reconstruction_loss / len(train_loader)
+            print(f"Epoch {epoch}: Loss {mean_loss}")
 
             if args.use_tensorboard:
                 writer.add_scalar("Loss/train", mean_loss, epoch)
@@ -382,8 +386,7 @@ if __name__ == '__main__':
             test_loader, test_window_converter = get_dataloader(data=test_data,
                                                                 batch_size=args.batch_size,
                                                                 window_length=window_length,
-                                                                test_stride=subsequence_length
-                                                                )
+                                                                test_stride=subsequence_length)
 
             test_anomaly_score = None
             test_recon_value = None
@@ -453,14 +456,14 @@ if __name__ == '__main__':
     test_recon_anomaly_score = recon_anomaly_score.test_score_all
     val_recon_anomaly_score = recon_anomaly_score.train_score_all
 
-    test_recon_anomaly_score[:test_window_converter.pad_length] = 0
-    val_recon_anomaly_score[:valid_window_converter.pad_length] = 0
+    test_recon_anomaly_score[:subsequence_length] = 0
+    val_recon_anomaly_score[:subsequence_length] = 0
 
     test_classify_anomaly_score = classify_anomaly_score.test_score_all
     val_classify_anomaly_score = classify_anomaly_score.train_score_all
 
-    test_classify_anomaly_score[:test_window_converter.pad_length] = 0
-    val_classify_anomaly_score[:valid_window_converter.pad_length] = 0
+    test_classify_anomaly_score[:subsequence_length] = 0
+    val_classify_anomaly_score[:subsequence_length] = 0
 
     anomaly_score_path = os.path.join(save_dir, f"anomaly_score")
     os.makedirs(anomaly_score_path, exist_ok=True)
