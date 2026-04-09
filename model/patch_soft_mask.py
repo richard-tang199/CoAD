@@ -236,12 +236,10 @@ class DetectionNetTimeFreqV2(nn.Module):
         self.hidden_size = expansion_ratio * self.proj_size_freq
         self.proj_freq = nn.Sequential(
             nn.Linear(self.proj_size_freq, self.hidden_size),
-            # nn.LayerNorm(self.hidden_size),
             nn.SELU()
         )
         self.proj_time = nn.Sequential(
             nn.Linear(self.proj_size_time, self.hidden_size),
-            # nn.LayerNorm(self.hidden_size),
             nn.SELU()
         )
         self.fusion_type = fusion_type
@@ -274,19 +272,16 @@ class DetectionNetTimeFreqV2(nn.Module):
 
         self.classifier_time = nn.Sequential(
             nn.Linear(self.hidden_size * 2, self.hidden_size),
-            # nn.LayerNorm(self.hidden_size),
             nn.SELU(),
             nn.Linear(self.hidden_size, 1, bias=False),
         )
         self.classifier_freq = nn.Sequential(
             nn.Linear(self.hidden_size * 2, self.hidden_size),
-            # nn.LayerNorm(self.hidden_size),
             nn.SELU(),
             nn.Linear(self.hidden_size, 1, bias=False),
         )
         self.classifier_residual = nn.Sequential(
             nn.Linear(self.hidden_size * 2, self.hidden_size),
-            # nn.LayerNorm(self.hidden_size),
             nn.SELU(),
             nn.Linear(self.hidden_size, 1, bias=False),
         )
