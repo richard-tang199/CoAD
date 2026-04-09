@@ -424,10 +424,8 @@ if __name__ == '__main__':
     save_path = os.path.join(save_dir, f"figure/group_{args.group_name}.png")
     # test_anomaly_score = np.squeeze(test_anomaly_score, axis=-1)
 
-    if args.dataset_name == "TSB-AD" or args.dataset_name == "ASD":
-        average_window = None
-    else:
-        average_window = subsequence_length
+
+    average_window = subsequence_length
 
     anomaly_score_cal_classify = AnomalyScoreCalculator(
         mode="error",

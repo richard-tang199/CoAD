@@ -5,7 +5,7 @@ import json
 import pandas as pd
 
 
-data_dir = "mask_results/UCR/freq_tf_v2_08-35-59/all/data"
+data_dir = "mask_results/UCR/freq_tf_v2_08-35-59/recon/data"
 data_group = os.listdir(data_dir)
 data_group.sort()
 # data_group = data_group[:180]
