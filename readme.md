@@ -47,7 +47,7 @@ pip install -r requirements.txt
 - A visual illustration of the flaws present in the datasets (SMD, PSM, SWaT, SMAP, MSL, and NAB) can be found at the following anonymous link: [flawed datasets](https://d.kuku.lu/mb753fdrp). The PDF is sourced from a presentation given at ITISE 2023.
 
 - Download the dataset from the anonymous link [dataset](https://d.kuku.lu/fszdkgjcx) and extract it to the `dataset` folder.
-- <mark>The 64 subsets of TSB-AD used in the paper can be found in the `runners/run_all_CoAD.sh` file.</mark>
+- <mark>The 64 subsets of TSB-AD used in the paper can be found in the `runners/run_all_CoAD.sh` file, including MGAB, SED, SVDB, IOPS and TODS</mark>
 
 ```
 ├─dataset
