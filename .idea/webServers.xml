@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="7139765d-df89-477f-8d34-92e8b9fb297a" name="H100_internal">
+        <fileTransfer rootFolder="/mnt/tqd" accessType="SFTP" host="10.20.29.18" port="2025" sshConfigId="2c660f95-460c-46dd-b664-d6ab8cc324c2" sshConfig="tangqideng@10.20.29.18:2025 key" keyPair="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" isUseSudo="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+      <webServer id="12592477-ab13-4416-a213-ec92cb006bd1" name="DTK">
+        <fileTransfer rootFolder="/root/private_data" accessType="SFTP" host="ssh.zzai2.scnet.cn" port="10160" sshConfigId="ac76b2df-e9f2-4748-aee8-c035ee64bcc3" sshConfig="root@ssh.zzai2.scnet.cn:10160 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+      <webServer id="80711850-a395-4029-a345-be4cf05ad32d" name="5090">
+        <fileTransfer rootFolder="/root/autodl-tmp" accessType="SFTP" host="connect.westd.seetacloud.com" port="34566" sshConfigId="7fad88b4-c796-4d72-b772-08b43e4df785" sshConfig="root@connect.westd.seetacloud.com:34566 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

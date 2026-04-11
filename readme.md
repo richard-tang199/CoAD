@@ -48,6 +48,8 @@ pip install -r requirements.txt
 
 - Download the dataset from the anonymous link [dataset](https://d.kuku.lu/fszdkgjcx) and extract it to the `dataset` folder.
 
+- The 64 subsets of TSB-AD used in the paper can be found in the `runners/run_all_CoAD.sh` file.
+
 ```
 ├─dataset
 ├───TSB-AD

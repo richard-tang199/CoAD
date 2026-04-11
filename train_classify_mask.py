@@ -29,7 +29,7 @@ parser.add_argument("--use_default_config", action='store_true', help="use defau
 parser.add_argument("--patch_size", type=int, default=8, help="length of the patch")
 parser.add_argument("--use_tensorboard", type=bool, default=False, help="use tensorboard for visualization")
 parser.add_argument("--device", type=str, default='cuda:0', help="device for training")
-parser.add_argument("--plot", type=str, default="True", help="whether to plot the results")
+parser.add_argument("--plot", type=str, default="False", help="whether to plot the results")
 parser.add_argument("--omega", type=float, default=10, help="omega for loss function")
 parser.add_argument("--window_multiple", type=int, default=4, help="window multiple for training")
 parser.add_argument('--random_seed', type=int, default=46, help='random seed for reproducibility')
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     else:
         raise ValueError("Invalid value for plot")
 
-    save_dir = f"mask_results/{args.dataset_name}/{args.model_name}_{args.timestamp}"
+    save_dir = f"mask_results/{args.dataset_name}/{args.model_name}_max_{args.timestamp}"
     os.makedirs(save_dir, exist_ok=True)
     os.makedirs(f"{save_dir}/figure", exist_ok=True)
     os.makedirs(f"{save_dir}/config", exist_ok=True)

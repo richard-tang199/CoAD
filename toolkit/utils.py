@@ -301,9 +301,9 @@ def get_dataloader(data: np.ndarray, batch_size: int, window_length: int, train_
         batch_size=batch_size,
         shuffle=if_shuffle,
         drop_last=False,
-        num_workers=0,
+        num_workers=4,
         pin_memory=True,
-        # prefetch_factor=4
+        prefetch_factor=4
     )
 
     return data_loader, window_converter

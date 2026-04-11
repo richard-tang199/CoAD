@@ -366,6 +366,10 @@ class DetectionNetTimeFreqV2(nn.Module):
             classify_result = torch.mean(classify_result, dim=-1, keepdim=True)
             if x_refer is not None:
                 classify_residual_result = torch.mean(classify_residual_result, dim=-1, keepdim=True)
+        elif self.fusion_type == "min":
+            classify_result = torch.min(classify_result, dim=-1, keepdim=True).values
+            if x_refer is not None:
+                classify_residual_result = torch.min(classify_residual_result, dim=-1, keepdim=True).values
         elif self.fusion_type == 'gate':
             patch_output_fusion = self.fusion_net(patch_output_freq, patch_output_time)
             classify_result = self.classifier_freq(patch_output_fusion)
@@ -1192,7 +1196,8 @@ class PatchFrequencyMask(nn.Module):
                 patch_size=self.patch_size,
                 expansion_ratio=expansion_ratio,
                 num_layers=num_layers,
-                n_fft=n_fft
+                n_fft=n_fft,
+                fusion_type = "max"
             )
         elif detect_mode == "freq_time_mean":
             self.detection_net = DetectionNetTimeFreqV2(
